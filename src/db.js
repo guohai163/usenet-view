@@ -1,5 +1,63 @@
 import pg from 'pg';
-import { discussionKey } from './article.js';
+import { articleDecodeVersion, decodeArticleFields, discussionKey } from './article.js';
+
+export async function refreshArticleText(pool, signal) {
+  const db = await pool.connect();
+  let cursor = ['0', '0'];
+  let updated = 0;
+  let failed = 0;
+  try {
+    const { rows: [lock] } = await db.query(
+      "SELECT pg_try_advisory_lock(hashtextextended('cnusenet:article-text', 0)) AS acquired",
+    );
+    if (!lock.acquired) return;
+
+    while (!signal.aborted) {
+      const { rows } = await db.query(`
+        WITH candidates AS (
+          SELECT group_id, number, octet_length(raw) AS bytes
+          FROM usenet_articles
+          WHERE decode_version < $3 AND (group_id, number) > ($1::bigint, $2::bigint)
+          ORDER BY group_id, number LIMIT 100
+        ), batch AS (
+          SELECT group_id, number, sum(bytes) OVER (ORDER BY group_id, number) - bytes AS preceding_bytes
+          FROM candidates
+        )
+        SELECT a.group_id, a.number, a.raw
+        FROM batch JOIN usenet_articles AS a USING (group_id, number)
+        WHERE preceding_bytes < 8 * 1024 * 1024
+        ORDER BY a.group_id, a.number
+      `, [...cursor, articleDecodeVersion]);
+      if (!rows.length) break;
+
+      const decoded = [];
+      for (const row of rows) {
+        if (signal.aborted) break;
+        try {
+          const { subject, author, body } = await decodeArticleFields(row.raw);
+          decoded.push({ group_id: row.group_id, number: row.number, subject, author, body });
+        } catch (error) {
+          failed += 1;
+          console.error(`文章 ${row.group_id}/${row.number} 解码失败：${error.message}`);
+        }
+      }
+      if (decoded.length) {
+        const { rowCount } = await db.query(`
+          UPDATE usenet_articles AS a
+          SET subject = b.subject, author = b.author, body = b.body, decode_version = $2
+          FROM jsonb_to_recordset($1::jsonb) AS b(group_id bigint, number bigint, subject text, author text, body text)
+          WHERE a.group_id = b.group_id AND a.number = b.number AND a.decode_version < $2
+        `, [JSON.stringify(decoded), articleDecodeVersion]);
+        updated += rowCount;
+      }
+      const last = rows.at(-1);
+      cursor = [last.group_id, last.number];
+    }
+  } finally {
+    db.release(true);
+  }
+  if (updated || failed) console.log(`存档重新解码：${updated} 篇，失败 ${failed} 篇。`);
+}
 
 async function backfillDiscussions(client) {
   let cursor = ['0', '0'];
@@ -61,6 +119,7 @@ export async function initializeDatabase(pool) {
         posted_at timestamptz,
         body text NOT NULL,
         raw bytea NOT NULL,
+        decode_version integer NOT NULL DEFAULT 0,
         PRIMARY KEY (group_id, number)
       );
     `);
@@ -74,6 +133,7 @@ export async function initializeDatabase(pool) {
       await backfillDiscussions(client);
     }
     await client.query('CREATE INDEX IF NOT EXISTS usenet_articles_thread ON usenet_articles (group_id, thread_key, number)');
+    await client.query('ALTER TABLE usenet_articles ADD COLUMN IF NOT EXISTS decode_version integer NOT NULL DEFAULT 0');
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

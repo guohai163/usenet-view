@@ -1,8 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
-import { discussionKey, parseArticle } from './article.js';
+import { articleDecodeVersion, decodeArticleFields, discussionKey } from './article.js';
 import { groupNamePattern, syncConfig } from './config.js';
-import { initializeDatabase, openDatabase } from './db.js';
+import { initializeDatabase, openDatabase, refreshArticleText } from './db.js';
 import { NntpClient } from './nntp.js';
 
 const numberWindow = 1000n;
@@ -78,18 +78,13 @@ async function syncCatalog(db, nntp, host, signal) {
   }
 }
 
-function dbText(value) {
-  return (value || '').replaceAll('\0', '�');
-}
-
 async function storeArticle(db, groupId, number, article) {
-  const mail = await parseArticle(article.raw);
-  const postedAt = Number.isFinite(mail.date?.getTime()) ? mail.date : null;
-  const messageId = dbText(mail.messageId || article.messageId);
+  const fields = await decodeArticleFields(article.raw);
+  const messageId = fields.messageId || (article.messageId || '').replaceAll('\0', '�');
   await db.query(`
     WITH added AS (
-      INSERT INTO usenet_articles (group_id, number, message_id, subject, author, posted_at, body, raw, thread_key)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO usenet_articles (group_id, number, message_id, subject, author, posted_at, body, raw, thread_key, decode_version)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (group_id, number) DO NOTHING
       RETURNING number
     )
@@ -98,8 +93,8 @@ async function storeArticle(db, groupId, number, article) {
     WHERE id = $1
   `, [
     groupId, number.toString(), messageId,
-    dbText(mail.subject), dbText(mail.from?.text), postedAt, dbText(mail.text), article.raw,
-    discussionKey(article.raw.subarray(0, 65536), messageId),
+    fields.subject, fields.author, fields.postedAt, fields.body, article.raw,
+    discussionKey(article.raw.subarray(0, 65536), messageId), articleDecodeVersion,
   ]);
 }
 
@@ -212,6 +207,7 @@ async function main() {
   const pool = openDatabase(config.databaseUrl);
   try {
     await initializeDatabase(pool);
+    await refreshArticleText(pool, stop.signal);
     while (!stop.signal.aborted) {
       try {
         await synchronize(pool, config, stop.signal);

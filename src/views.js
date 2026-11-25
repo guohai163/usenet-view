@@ -1,3 +1,4 @@
+import { decodeArticleSource } from './article.js';
 import { articleColumns } from './reading.js';
 
 const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -177,7 +178,7 @@ function reader({ article, explicitArticle, group, params, thread }) {
   const base = { group: group.id, article: article.number };
   const tab = (source, label) => `<a href="${href(params, { ...base, view: source ? 'source' : null })}"${raw === source ? ' aria-current="page"' : ''}>${label}</a>`;
   const content = raw
-    ? escape(article.raw?.toString('utf8'))
+    ? escape(article.raw ? decodeArticleSource(article.raw) : '')
     : article.body.split(/^([>][^\n]*$)/m).map((piece, index) => index % 2
       ? `<span class="quote">${escape(piece)}</span>` : escape(piece)).join('');
   return `<article class="reader" aria-labelledby="article-title" data-active-number="${article.number}" data-explicit="${explicitArticle}">

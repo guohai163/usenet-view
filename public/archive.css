@@ -39,16 +39,11 @@ a:focus-visible, input:focus-visible, button:focus-visible {
 .brand strong { font-size: 21px; letter-spacing: -.045em; line-height: 1; }
 .brand-label { color: #b9c4d6; border-left: 1px solid #57647a; padding-left: 11px; margin-left: 3px; }
 .brand-icon {
-  width: 29px; height: 29px; flex: none;
-  display: grid; place-items: center;
-  border: 1px solid #e3ad70; border-radius: 5px; color: #f4c189;
+  display: block;
+  width: 52px;
+  height: auto;
+  flex: none;
 }
-.brand-icon i {
-  display: block; width: 14px; height: 14px; position: relative;
-  border: 1px solid currentColor; border-radius: 50%;
-}
-.brand-icon i::before { content: ""; position: absolute; inset: 3px; border: 1px solid currentColor; border-radius: 50%; }
-.brand-icon i::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: currentColor; }
 .endpoint { font: 12px var(--mono); text-align: right; overflow-wrap: anywhere; }
 .endpoint span { color: #c0cada; margin-right: 7px; }
 
@@ -184,6 +179,7 @@ a.tool:hover { background: var(--active); border-color: #a5b9d6; }
 
 @media (max-width: 800px) {
   .masthead { min-height: 51px; padding: 0 11px; }
+  .brand-icon { width: 42px; }
   .brand strong { font-size: 18px; }
   .brand-label { display: none; }
   .layout { display: flex; flex-direction: column; height: auto; min-height: calc(100dvh - 84px); }

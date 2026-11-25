@@ -113,7 +113,7 @@ async function readArchive(db, host, params) {
 function send(request, response, status, contentType, content, headers = {}) {
   response.writeHead(status, {
     'Content-Type': contentType,
-    'Content-Security-Policy': "default-src 'none'; style-src 'self'; script-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    'Content-Security-Policy': "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     ...headers,
@@ -126,10 +126,16 @@ async function main() {
   const db = openDatabase(config.databaseUrl);
   try {
     await initializeDatabase(db);
-    const [css, script] = await Promise.all([
-      readFile(new URL('../public/archive.css', import.meta.url)),
-      readFile(new URL('../public/reader.js', import.meta.url)),
-    ]);
+    const files = [
+      ['archive.css', 'text/css; charset=utf-8'],
+      ['reader.js', 'text/javascript; charset=utf-8'],
+      ['site-logo.png', 'image/png'],
+      ['favicon.png', 'image/png'],
+    ];
+    const assets = new Map(await Promise.all(files.map(async ([name, contentType]) => {
+      const content = await readFile(new URL('../public/' + name, import.meta.url));
+      return ['/' + name, { contentType, content }];
+    })));
     const server = createServer(async (request, response) => {
       const html = (status, page, headers) => send(request, response, status, 'text/html; charset=utf-8', page, headers);
       try {
@@ -141,11 +147,9 @@ async function main() {
           await db.query('SELECT 1');
           return send(request, response, 200, 'text/plain; charset=utf-8', 'ok\n', { 'Cache-Control': 'no-store' });
         }
-        if (url.pathname === '/archive.css') {
-          return send(request, response, 200, 'text/css; charset=utf-8', css, { 'Cache-Control': 'no-cache' });
-        }
-        if (url.pathname === '/reader.js') {
-          return send(request, response, 200, 'text/javascript; charset=utf-8', script, { 'Cache-Control': 'no-cache' });
+        const asset = assets.get(url.pathname);
+        if (asset) {
+          return send(request, response, 200, asset.contentType, asset.content, { 'Cache-Control': 'no-cache' });
         }
         if (url.pathname === '/') {
           const page = await readArchive(db, config.host, url.searchParams);

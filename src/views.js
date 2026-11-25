@@ -43,6 +43,7 @@ function frame(title, content, host) {
   <meta name="theme-color" content="#202d43">
   <meta name="robots" content="noindex">
   <title>${escape(title)} · CNUsenet</title>
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png">
   <link rel="stylesheet" href="/archive.css">
   <script src="/reader.js" defer></script>
 </head>
@@ -50,7 +51,7 @@ function frame(title, content, host) {
   <a class="skip" href="#main">跳到主要内容</a>
   <header class="masthead">
     <a class="brand" href="/" aria-label="CNUsenet 首页">
-      <span class="brand-icon" aria-hidden="true"><i></i></span>
+      <img class="brand-icon" src="/site-logo.png" width="200" height="171" alt="">
       <strong>CNUsenet</strong><span class="brand-label">新闻组阅读器</span>
     </a>
     ${host ? `<div class="endpoint"><span>NNTP</span> ${escape(endpoint)}</div>` : ''}

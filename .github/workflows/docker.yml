@@ -36,7 +36,7 @@ jobs:
         run: |
           docker build -t "$USENET_IMAGE" .
           docker compose config --quiet
-          docker compose up -d --wait --wait-timeout 120 web
+          docker compose up -d --wait --wait-timeout 120
           curl --fail --silent --show-error http://127.0.0.1:3000/healthz
           curl --fail --silent --show-error http://127.0.0.1:3000/ | grep -Fq CNUsenet
       - name: Show Compose logs on failure

@@ -37,7 +37,17 @@ services:
     <<: *archive
     command: ["node", "src/sync.js", "--watch"]
     healthcheck:
-      disable: true
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const { Client } = require('pg');
+          const db = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 2500 });
+          db.connect().then(() => db.end()).catch(() => { process.exitCode = 1; });
+      interval: 10s
+      timeout: 4s
+      retries: 5
     environment:
       <<: *archive-env
       NNTP_GROUPS: "${NNTP_GROUPS-}"

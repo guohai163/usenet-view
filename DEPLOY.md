@@ -56,4 +56,10 @@ docker compose logs --tail=100 web sync
 
 使用外部数据库时，更新继续使用上一节的两个命令。运行 `docker compose down` 可停止并移除容器，同时保留数据库卷。
 
+## news.cnusenet.org 生产部署
+
+应用配置位于服务器的 `/data/usenet-view`，其中 `docker-compose.override.yml` 将 Web 服务接入 Nginx 的 `shared-network`，网络别名为 `usenet-view-web`。同步任务通过 `news.cnusenet.org:119` 归档全部新闻组。
+
+站点配置位于 `/data/nginx-data/conf.d/news.cnusenet.org.conf`。Nginx 将 HTTP 跳转到 HTTPS，并使用 `/data/nginx-data/certbot/conf/live/news.cnusenet.org/` 下的 Let's Encrypt 证书。证书由服务器现有的 `nginx-data-certbot-renew.timer` 续期。
+
 [GitHub Actions 构建记录](https://github.com/guohai163/usenet-view/actions) · [GitHub Container Registry 镜像](https://github.com/guohai163/usenet-view/pkgs/container/usenet-view)

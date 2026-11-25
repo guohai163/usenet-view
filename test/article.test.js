@@ -47,6 +47,18 @@ test('reads unsigned legacy Chinese and keeps valid UTF-8 under an ASCII declara
   assert.match(decodeArticleSource(utf8), /中文$/);
 });
 
+test('recovers GB text wrapped as Latin-1 and preserves genuine Latin-1 posts', async () => {
+  const headers = 'Content-Type: text/plain; charset=ISO-8859-1\r\nContent-Transfer-Encoding: 8bit\r\n\r\n';
+  const wrapped = Buffer.from('d6d0cec4b2e2cad4', 'hex').toString('latin1');
+  const fields = await decodeArticleFields(Buffer.from(headers + wrapped));
+  assert.equal(fields.body, '中文测试');
+  assert.equal(fields.sourceText, headers + '中文测试');
+
+  const ordinary = Buffer.from(headers + 'Café déjà vu, très bien.', 'latin1');
+  assert.equal((await parseArticle(ordinary)).text, 'Café déjà vu, très bien.');
+  assert.equal(decodeArticleSource(ordinary), headers + 'Café déjà vu, très bien.');
+});
+
 test('uses the first folded reference and falls back to reply and message IDs', () => {
   const headers = Buffer.from('References:\r\n <root@example> <parent@example>\r\nIn-Reply-To: <parent@example>\r\n\r\n');
   assert.equal(discussionKey(headers, '<current@example>'), '<root@example>');

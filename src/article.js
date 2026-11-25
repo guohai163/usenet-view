@@ -6,6 +6,8 @@ const han = /\p{Script=Han}/u;
 const charsetParameter = /(;[ \t\r\n]*charset[ \t\r\n]*=[ \t\r\n]*)(?:"([^"]*)"|([^;\s]+))/i;
 const chineseCharset = /^(?:gbk|gb\d+|gb_2312-80|x-gbk|cp936|big5(?:-hkscs)?|cn-big5)$/i;
 const asciiCharset = /^(?:us-)?ascii$/i;
+const latin1Charset = /^(?:iso-8859-1|latin-?1)$/i;
+const strictGb18030 = new TextDecoder('gb18030', { fatal: true });
 
 function articleParts(raw) {
   let end = raw.indexOf('\r\n\r\n');
@@ -78,11 +80,30 @@ function inferredChinese(bytes) {
   return han.test(remaining) && guess.length - remaining.length <= existingMarkers ? guess : null;
 }
 
+function recoverWrappedChinese(bytes) {
+  if (!isUtf8(bytes)) return null;
+  const wrapper = bytes.toString('utf8');
+  if (/[^\x00-\xff]/.test(wrapper)) return null;
+  // Some imports stored GB bytes as Latin-1 characters, then encoded those characters in UTF-8.
+  const highBytes = wrapper.match(/[\x80-\xff]/g)?.length ?? 0;
+  const adjacentPairs = wrapper.match(/[\x80-\xff]{2}/g)?.length ?? 0;
+  if (adjacentPairs < 4 || adjacentPairs * 2 < highBytes * 0.8) return null;
+
+  try {
+    const decoded = strictGb18030.decode(Buffer.from(wrapper, 'latin1'));
+    const hanCount = decoded.match(/\p{Script=Han}/gu)?.length ?? 0;
+    return hanCount >= 4 ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 function readableBody(parts) {
   if (!parts.unencoded || !parts.mediaType.startsWith('text/')) return null;
 
   const { body, charset } = parts;
   if (!charset || asciiCharset.test(charset)) return inferredChinese(body);
+  if (latin1Charset.test(charset)) return recoverWrappedChinese(body);
   if (chineseCharset.test(charset) && body.includes(replacementBytes)) {
     return decodeLegacy(body, charset);
   }
@@ -114,12 +135,12 @@ export function decodeArticleSource(raw, parts = articleParts(raw)) {
   if (!parts.unencoded || !parts.mediaType.startsWith('text/')) {
     return headers + parts.separator.toString('ascii') + parts.body.toString('utf8');
   }
-  const text = !parts.charset || asciiCharset.test(parts.charset)
-    ? inferredChinese(parts.body) : decodeLegacy(parts.body, parts.charset);
+  const text = readableBody(parts)
+    ?? (parts.charset && !asciiCharset.test(parts.charset) ? decodeLegacy(parts.body, parts.charset) : null);
   return headers + parts.separator.toString('ascii') + (text ?? parts.body.toString('utf8'));
 }
 
-export const articleDecodeVersion = 2;
+export const articleDecodeVersion = 3;
 
 export async function decodeArticleFields(raw) {
   const parts = articleParts(raw);

@@ -67,7 +67,7 @@ async function readArticles(db, group, params, filters, threadKey) {
 async function readArticle(db, groupId, number, sourceMode) {
   const { rows: [article] } = await db.query(`
     SELECT number, message_id, subject, author, posted_at, body, thread_key,
-      CASE WHEN $3::boolean THEN raw END AS raw
+      CASE WHEN $3::boolean THEN source_text END AS source_text
     FROM usenet_articles WHERE group_id = $1 AND number = $2
   `, [groupId, number, sourceMode]);
   return article;

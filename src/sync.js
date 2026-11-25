@@ -83,8 +83,9 @@ async function storeArticle(db, groupId, number, article) {
   const messageId = fields.messageId || (article.messageId || '').replaceAll('\0', '�');
   await db.query(`
     WITH added AS (
-      INSERT INTO usenet_articles (group_id, number, message_id, subject, author, posted_at, body, raw, thread_key, decode_version)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO usenet_articles
+        (group_id, number, message_id, subject, author, posted_at, body, source_text, raw, thread_key, decode_version)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (group_id, number) DO NOTHING
       RETURNING number
     )
@@ -93,7 +94,7 @@ async function storeArticle(db, groupId, number, article) {
     WHERE id = $1
   `, [
     groupId, number.toString(), messageId,
-    fields.subject, fields.author, fields.postedAt, fields.body, article.raw,
+    fields.subject, fields.author, fields.postedAt, fields.body, fields.sourceText, article.raw,
     discussionKey(article.raw.subarray(0, 65536), messageId), articleDecodeVersion,
   ]);
 }

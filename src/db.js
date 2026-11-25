@@ -34,8 +34,8 @@ export async function refreshArticleText(pool, signal) {
       for (const row of rows) {
         if (signal.aborted) break;
         try {
-          const { subject, author, body } = await decodeArticleFields(row.raw);
-          decoded.push({ group_id: row.group_id, number: row.number, subject, author, body });
+          const { subject, author, body, sourceText } = await decodeArticleFields(row.raw);
+          decoded.push({ group_id: row.group_id, number: row.number, subject, author, body, source_text: sourceText });
         } catch (error) {
           failed += 1;
           console.error(`文章 ${row.group_id}/${row.number} 解码失败：${error.message}`);
@@ -44,8 +44,10 @@ export async function refreshArticleText(pool, signal) {
       if (decoded.length) {
         const { rowCount } = await db.query(`
           UPDATE usenet_articles AS a
-          SET subject = b.subject, author = b.author, body = b.body, decode_version = $2
-          FROM jsonb_to_recordset($1::jsonb) AS b(group_id bigint, number bigint, subject text, author text, body text)
+          SET subject = b.subject, author = b.author, body = b.body, source_text = b.source_text, decode_version = $2
+          FROM jsonb_to_recordset($1::jsonb) AS b(
+            group_id bigint, number bigint, subject text, author text, body text, source_text text
+          )
           WHERE a.group_id = b.group_id AND a.number = b.number AND a.decode_version < $2
         `, [JSON.stringify(decoded), articleDecodeVersion]);
         updated += rowCount;
@@ -118,6 +120,7 @@ export async function initializeDatabase(pool) {
         author text NOT NULL,
         posted_at timestamptz,
         body text NOT NULL,
+        source_text text,
         raw bytea NOT NULL,
         decode_version integer NOT NULL DEFAULT 0,
         PRIMARY KEY (group_id, number)
@@ -134,6 +137,7 @@ export async function initializeDatabase(pool) {
     }
     await client.query('CREATE INDEX IF NOT EXISTS usenet_articles_thread ON usenet_articles (group_id, thread_key, number)');
     await client.query('ALTER TABLE usenet_articles ADD COLUMN IF NOT EXISTS decode_version integer NOT NULL DEFAULT 0');
+    await client.query('ALTER TABLE usenet_articles ADD COLUMN IF NOT EXISTS source_text text');
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');

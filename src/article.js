@@ -22,13 +22,15 @@ function articleParts(raw) {
   const charsetMatch = charsetParameter.exec(type);
   const charset = (charsetMatch?.[2] ?? charsetMatch?.[3] ?? '').trim().toLowerCase();
   const transfer = /^content-transfer-encoding:[\t ]*([\w-]+)/im.exec(headers)?.[1].toLowerCase();
-  return {
+  const parts = {
     headers, type, charset,
     mediaType: type.split(';', 1)[0].trim().toLowerCase() || 'text/plain',
     unencoded: !transfer || ['7bit', '8bit', 'binary'].includes(transfer),
     separator: raw.subarray(end, end + separatorLength),
     body: raw.subarray(end + separatorLength),
   };
+  parts.normalizedHeaders = normalizedHeaders(parts);
+  return parts;
 }
 
 function textDecoder(charset) {
@@ -87,12 +89,11 @@ function readableBody(parts) {
   return null;
 }
 
-export function parseArticle(raw) {
-  const parts = articleParts(raw);
+export function parseArticle(raw, parts = articleParts(raw)) {
   const options = { skipTextToHtml: true, skipImageLinks: true };
   if (!parts) return simpleParser(raw, options);
 
-  const headers = normalizedHeaders(parts);
+  const headers = parts.normalizedHeaders;
   const text = readableBody(parts);
   if (text === null && headers === parts.headers) return simpleParser(raw, options);
 
@@ -107,10 +108,9 @@ export function parseArticle(raw) {
   ]), options);
 }
 
-export function decodeArticleSource(raw) {
-  const parts = articleParts(raw);
+export function decodeArticleSource(raw, parts = articleParts(raw)) {
   if (!parts) return raw.toString('utf8');
-  const headers = Buffer.from(normalizedHeaders(parts), 'latin1').toString('utf8');
+  const headers = Buffer.from(parts.normalizedHeaders, 'latin1').toString('utf8');
   if (!parts.unencoded || !parts.mediaType.startsWith('text/')) {
     return headers + parts.separator.toString('ascii') + parts.body.toString('utf8');
   }
@@ -119,15 +119,17 @@ export function decodeArticleSource(raw) {
   return headers + parts.separator.toString('ascii') + (text ?? parts.body.toString('utf8'));
 }
 
-export const articleDecodeVersion = 1;
+export const articleDecodeVersion = 2;
 
 export async function decodeArticleFields(raw) {
-  const mail = await parseArticle(raw);
+  const parts = articleParts(raw);
+  const mail = await parseArticle(raw, parts);
   const dbText = value => (value || '').replaceAll('\0', '�');
   return {
     subject: dbText(mail.subject),
     author: dbText(mail.from?.text),
     body: dbText(mail.text),
+    sourceText: dbText(decodeArticleSource(raw, parts)),
     messageId: dbText(mail.messageId),
     postedAt: Number.isFinite(mail.date?.getTime()) ? mail.date : null,
   };

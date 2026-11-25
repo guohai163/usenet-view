@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decodeArticleSource, discussionKey, parseArticle } from '../src/article.js';
+import { decodeArticleFields, decodeArticleSource, discussionKey, parseArticle } from '../src/article.js';
 
 test('reads legacy GB18030 headers with existing replacement characters and a GB2312 body', async () => {
   const raw = Buffer.concat([
@@ -21,11 +21,12 @@ test('keeps valid UTF-8 and standard MIME encoded subjects', async () => {
   assert.equal(mime.subject, '中文');
 });
 
-test('shows declared GB2312 in the source view and preserves existing replacement characters', async () => {
+test('prepares UTF-8 body and source text for storage using the declared GB2312 charset', async () => {
   const headers = 'MIME-Version: 1.0\r\nContent-Type: text/plain;\r\n charset="GB2312"\r\nContent-Transfer-Encoding: 8bit\r\n\r\n';
   const raw = Buffer.concat([Buffer.from(headers), Buffer.from('d6d0cec4efbfbdb2e2cad4', 'hex')]);
-  assert.equal(decodeArticleSource(raw), headers + '中文�测试');
-  assert.equal((await parseArticle(raw)).text, '中文�测试');
+  const fields = await decodeArticleFields(raw);
+  assert.equal(fields.sourceText, headers + '中文�测试');
+  assert.equal(fields.body, '中文�测试');
 });
 
 test('applies MIME transfer decoding in the body while the source keeps the wire representation', async () => {

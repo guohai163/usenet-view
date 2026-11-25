@@ -1,0 +1,50 @@
+x-archive: &archive
+  image: "${USENET_IMAGE:-ghcr.io/guohai163/usenet-view:latest}"
+  init: true
+  restart: unless-stopped
+  depends_on:
+    db:
+      condition: service_healthy
+
+x-archive-env: &archive-env
+  DATABASE_URL: "${DATABASE_URL:-postgresql://usenet:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/usenet}"
+  NNTP_HOST: "${NNTP_HOST:-news.cnusenet.org}"
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: usenet
+      POSTGRES_USER: usenet
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "usenet", "-d", "usenet"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - archive-db:/var/lib/postgresql/data
+
+  web:
+    <<: *archive
+    environment:
+      <<: *archive-env
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+
+  sync:
+    <<: *archive
+    command: ["node", "src/sync.js", "--watch"]
+    healthcheck:
+      disable: true
+    environment:
+      <<: *archive-env
+      NNTP_GROUPS: "${NNTP_GROUPS-}"
+      NNTP_INITIAL_LIMIT: "${NNTP_INITIAL_LIMIT:-0}"
+      NNTP_SYNC_INTERVAL_SEC: "${NNTP_SYNC_INTERVAL_SEC:-300}"
+      NNTP_TIMEOUT_MS: "${NNTP_TIMEOUT_MS:-30000}"
+      NNTP_MAX_ARTICLE_BYTES: "${NNTP_MAX_ARTICLE_BYTES:-67108864}"
+
+volumes:
+  archive-db:
